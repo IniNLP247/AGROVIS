@@ -1,0 +1,52 @@
+# Build outputs
+build/
+out/
+cmake-build-*/
+CMakeUserPresets.json
+
+# Python / ML environments & caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Datasets, raw imagery & model weights (never commit multi-GB captures)
+dataset/
+datasets/
+data/
+samples_raw/
+*.zip
+*.tar
+*.tar.gz
+*.tif
+*.TIF
+*.tiff
+*.TIFF
+*.dng
+*.DNG
+*.jpg
+*.JPG
+*.jpeg
+*.JPEG
+*.png
+*.PNG
+*.onnx
+*.pt
+*.pth
+*.engine
+
+# Keep docs/assets explicitly if ever added under docs/
+!docs/**/*.png
+!docs/**/*.jpg
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

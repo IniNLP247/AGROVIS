@@ -1,0 +1,94 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "linux-system",
+      "displayName": "Linux System Qt6 (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-system",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "linux-qt611",
+      "displayName": "Linux Qt 6.11.1 Host (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-qt611",
+      "environment": {
+        "LD_LIBRARY_PATH": "/home/inigo/Qt/6.11.1/gcc_64/lib:$penv{LD_LIBRARY_PATH}"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_PREFIX_PATH": "/home/inigo/Qt/6.11.1/gcc_64",
+        "CMAKE_BUILD_RPATH": "/home/inigo/Qt/6.11.1/gcc_64/lib",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "linux-docker",
+      "displayName": "Linux Docker Container (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-docker",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc",
+      "displayName": "Windows MSVC (Visual Studio / Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-msvc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-system",
+      "configurePreset": "linux-system"
+    },
+    {
+      "name": "linux-qt611",
+      "configurePreset": "linux-qt611"
+    },
+    {
+      "name": "linux-docker",
+      "configurePreset": "linux-docker"
+    },
+    {
+      "name": "windows-msvc",
+      "configurePreset": "windows-msvc"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "linux-system",
+      "configurePreset": "linux-system",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-qt611",
+      "configurePreset": "linux-qt611",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-docker",
+      "configurePreset": "linux-docker",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "windows-msvc",
+      "configurePreset": "windows-msvc",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

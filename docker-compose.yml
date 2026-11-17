@@ -1,0 +1,47 @@
+services:
+  agrovis-app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: agrovis:dev
+    container_name: agrovis_app_container
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    network_mode: host
+    environment:
+      - HOME=/tmp
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - QT_QPA_PLATFORM=xcb
+      - XDG_RUNTIME_DIR=/tmp/runtime-agrovis
+      - LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    working_dir: /workspace
+    command: >
+      bash -c "mkdir -p /tmp/runtime-agrovis && chmod 700 /tmp/runtime-agrovis &&
+      cmake --preset linux-docker &&
+      cmake --build --preset linux-docker -j$$(nproc) &&
+      ctest --preset linux-docker --output-on-failure &&
+      ./build/linux-docker/app/agrovis_app"
+
+  agrovis-dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: agrovis:dev
+    container_name: agrovis_dev_container
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    network_mode: host
+    environment:
+      - HOME=/tmp
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - XDG_RUNTIME_DIR=/tmp/runtime-agrovis
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: bash
