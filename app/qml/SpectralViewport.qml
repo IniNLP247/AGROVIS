@@ -11,7 +11,6 @@ Rectangle {
     property real zoomScale: 1.0
     property real panX: 0.0
     property real panY: 0.0
-    property var probeData: ({ valid: false })
 
     function fitToView() {
         if (canvasArea.width <= 10 || canvasArea.height <= 10 || appCtrl.imageWidth <= 0) return;
@@ -22,16 +21,6 @@ Rectangle {
         zoomScale = Math.max(0.1, Math.min(sx, sy));
         panX = 0.0;
         panY = 0.0;
-    }
-
-    function updateProbeFromItemCoords(px, py) {
-        var ix = Math.floor(px);
-        var iy = Math.floor(py);
-        if (ix >= 0 && iy >= 0 && ix < appCtrl.imageWidth && iy < appCtrl.imageHeight) {
-            probeData = appCtrl.probeAtPixel(ix, iy);
-        } else {
-            probeData = ({ valid: false });
-        }
     }
 
     Connections {
@@ -303,11 +292,10 @@ Rectangle {
                     cache: false
                 }
 
-                // Pan + Wheel + Hover Pixel Probe MouseArea
+                // Pan + Wheel MouseArea
                 MouseArea {
                     id: stageMouse
                     anchors.fill: parent
-                    hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                     property real lastX: 0
                     property real lastY: 0
@@ -319,15 +307,10 @@ Rectangle {
                         panning = true;
                     }
                     onReleased: panning = false
-                    onExited: viewportRoot.probeData = ({ valid: false })
                     onPositionChanged: function(mouse) {
                         if (panning) {
                             viewportRoot.panX += (mouse.x - lastX);
                             viewportRoot.panY += (mouse.y - lastY);
-                        } else {
-                            viewportRoot.updateProbeFromItemCoords(
-                                mouse.x / viewportRoot.zoomScale,
-                                mouse.y / viewportRoot.zoomScale);
                         }
                     }
                     onWheel: function(wheel) {
@@ -455,21 +438,15 @@ Rectangle {
 
                             MouseArea {
                                 anchors.fill: parent
-                                hoverEnabled: true
                                 property real lastX: 0
                                 property real lastY: 0
                                 property bool panning: false
                                 onPressed: function(mouse) { lastX = mouse.x; lastY = mouse.y; panning = true; }
                                 onReleased: panning = false
-                                onExited: viewportRoot.probeData = ({ valid: false })
                                 onPositionChanged: function(mouse) {
                                     if (panning) {
                                         viewportRoot.panX += (mouse.x - lastX);
                                         viewportRoot.panY += (mouse.y - lastY);
-                                    } else {
-                                        viewportRoot.updateProbeFromItemCoords(
-                                            mouse.x / viewportRoot.zoomScale,
-                                            mouse.y / viewportRoot.zoomScale);
                                     }
                                 }
                                 onWheel: function(wheel) {
@@ -524,7 +501,7 @@ Rectangle {
             }
         }
 
-        // Bottom Pixel Inspector & Colorbar Legend HUD
+        // Bottom Centered Colorbar Legend & Scale Mode Controls
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 46
@@ -534,121 +511,141 @@ Rectangle {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 14
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 8
 
-                // Live Pixel Probe Readout
+                Item { Layout.fillWidth: true }
+
                 Label {
-                    color: viewportRoot.probeData.valid ? theme.textPrimary : theme.textDim
+                    text: appCtrl.tr.scaleLow
+                    color: "#F87171"
                     font.pixelSize: 11
-                    font.family: "monospace"
-                    Layout.fillWidth: true
-                    text: {
-                        if (!viewportRoot.probeData.valid) {
-                            return appCtrl.tr.hoverPrompt;
-                        }
-                        var p = viewportRoot.probeData;
-                        var tag = p.masked ? appCtrl.tr.maskedTag : "";
-                        return "(" + p.x + "," + p.y + ")  " +
-                               appCtrl.tr.probeB + p.blue.toFixed(2) + " " +
-                               appCtrl.tr.probeG + p.green.toFixed(2) + " " +
-                               appCtrl.tr.probeR + p.red.toFixed(2) + " " +
-                               appCtrl.tr.probeRe + p.redEdge.toFixed(2) + " " +
-                               appCtrl.tr.probeNir + p.nir.toFixed(2) + "  |  " +
-                               appCtrl.activeIndexName + ": " + p.indexValue.toFixed(3) + tag;
-                    }
+                    font.weight: Font.Medium
                 }
 
-                // Dynamic Colorbar Legend + Clamp Range
-                RowLayout {
-                    spacing: 8
-
-                    TextField {
-                        Layout.preferredWidth: 52
-                        Layout.preferredHeight: 26
-                        text: appCtrl.clampMin.toFixed(2)
-                        color: theme.textPrimary
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        background: Rectangle {
-                            radius: 4
-                            color: theme.bgControl
-                            border.color: theme.border
-                        }
-                        onEditingFinished: {
-                            var v = parseFloat(text);
-                            if (!isNaN(v)) appCtrl.clampMin = v;
-                        }
-                    }
-
-                    Rectangle {
-                        width: 130
-                        height: 12
-                        radius: 3
-                        border.color: theme.border
-                        gradient: Gradient {
-                            orientation: Gradient.Horizontal
-                            GradientStop {
-                                position: 0.0
-                                color: appCtrl.colormapKind === 0 ? "#A51926"
-                                     : appCtrl.colormapKind === 1 ? "#440154"
-                                     : appCtrl.colormapKind === 2 ? "#30123B" : "#111111"
-                            }
-                            GradientStop {
-                                position: 0.5
-                                color: appCtrl.colormapKind === 0 ? "#F8E06E"
-                                     : appCtrl.colormapKind === 1 ? "#21918C"
-                                     : appCtrl.colormapKind === 2 ? "#A4FC3C" : "#888888"
-                            }
-                            GradientStop {
-                                position: 1.0
-                                color: appCtrl.colormapKind === 0 ? "#127C3A"
-                                     : appCtrl.colormapKind === 1 ? "#FDE725"
-                                     : appCtrl.colormapKind === 2 ? "#7A0403" : "#FFFFFF"
-                            }
-                        }
-                    }
-
-                    TextField {
-                        Layout.preferredWidth: 52
-                        Layout.preferredHeight: 26
-                        text: appCtrl.clampMax.toFixed(2)
-                        color: theme.textPrimary
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        background: Rectangle {
-                            radius: 4
-                            color: theme.bgControl
-                            border.color: theme.border
-                        }
-                        onEditingFinished: {
-                            var v = parseFloat(text);
-                            if (!isNaN(v)) appCtrl.clampMax = v;
-                        }
-                    }
-
-                    Rectangle {
-                        width: 44
-                        height: 26
+                TextField {
+                    Layout.preferredWidth: 54
+                    Layout.preferredHeight: 28
+                    text: appCtrl.clampMin.toFixed(2)
+                    color: theme.textPrimary
+                    font.pixelSize: 11
+                    horizontalAlignment: Text.AlignHCenter
+                    background: Rectangle {
                         radius: 4
-                        color: rstMa.containsMouse ? theme.bgHover : theme.bgControl
+                        color: theme.bgControl
                         border.color: theme.border
-                        Label {
-                            anchors.centerIn: parent
-                            text: appCtrl.tr.autoBtn
-                            color: theme.textMuted
-                            font.pixelSize: 10
+                    }
+                    onEditingFinished: {
+                        var v = parseFloat(text);
+                        if (!isNaN(v)) appCtrl.clampMin = v;
+                    }
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: 140
+                    Layout.preferredHeight: 12
+                    radius: 3
+                    border.color: theme.border
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop {
+                            position: 0.0
+                            color: appCtrl.colormapKind === 0 ? "#A51926"
+                                 : appCtrl.colormapKind === 1 ? "#440154"
+                                 : appCtrl.colormapKind === 2 ? "#30123B" : "#111111"
                         }
-                        MouseArea {
-                            id: rstMa
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: appCtrl.resetIndexClampDefaults()
+                        GradientStop {
+                            position: 0.5
+                            color: appCtrl.colormapKind === 0 ? "#F8E06E"
+                                 : appCtrl.colormapKind === 1 ? "#21918C"
+                                 : appCtrl.colormapKind === 2 ? "#A4FC3C" : "#888888"
+                        }
+                        GradientStop {
+                            position: 1.0
+                            color: appCtrl.colormapKind === 0 ? "#127C3A"
+                                 : appCtrl.colormapKind === 1 ? "#FDE725"
+                                 : appCtrl.colormapKind === 2 ? "#7A0403" : "#FFFFFF"
                         }
                     }
                 }
+
+                TextField {
+                    Layout.preferredWidth: 54
+                    Layout.preferredHeight: 28
+                    text: appCtrl.clampMax.toFixed(2)
+                    color: theme.textPrimary
+                    font.pixelSize: 11
+                    horizontalAlignment: Text.AlignHCenter
+                    background: Rectangle {
+                        radius: 4
+                        color: theme.bgControl
+                        border.color: theme.border
+                    }
+                    onEditingFinished: {
+                        var v = parseFloat(text);
+                        if (!isNaN(v)) appCtrl.clampMax = v;
+                    }
+                }
+
+                Label {
+                    text: appCtrl.tr.scaleHigh
+                    color: "#4ADE80"
+                    font.pixelSize: 11
+                    font.weight: Font.Medium
+                }
+
+                Item { Layout.preferredWidth: 8 }
+                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: theme.border }
+                Item { Layout.preferredWidth: 8 }
+
+                Rectangle {
+                    Layout.preferredWidth: Math.max(76, stdLbl.implicitWidth + 24)
+                    Layout.preferredHeight: 28
+                    radius: 5
+                    color: !appCtrl.autoRange ? theme.accentTint : (rstMa.containsMouse ? theme.bgHover : theme.bgControl)
+                    border.color: !appCtrl.autoRange ? theme.accent : theme.border
+                    Label {
+                        id: stdLbl
+                        anchors.centerIn: parent
+                        text: appCtrl.tr.standardBtn
+                        color: !appCtrl.autoRange ? theme.accent : theme.textMuted
+                        font.pixelSize: 11
+                        font.weight: !appCtrl.autoRange ? Font.Bold : Font.Normal
+                    }
+                    MouseArea {
+                        id: rstMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: appCtrl.resetIndexClampDefaults()
+                    }
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: Math.max(76, fitRangeLbl.implicitWidth + 24)
+                    Layout.preferredHeight: 28
+                    radius: 5
+                    color: appCtrl.autoRange ? theme.accentTint : (fitRangeMa.containsMouse ? theme.bgHover : theme.bgControl)
+                    border.color: appCtrl.autoRange ? theme.accent : theme.border
+                    Label {
+                        id: fitRangeLbl
+                        anchors.centerIn: parent
+                        text: appCtrl.tr.autoFitBtn
+                        color: appCtrl.autoRange ? theme.accent : theme.textMuted
+                        font.pixelSize: 11
+                        font.weight: appCtrl.autoRange ? Font.Bold : Font.Normal
+                    }
+                    MouseArea {
+                        id: fitRangeMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: appCtrl.autoRange = true
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
             }
         }
     }

@@ -228,7 +228,7 @@
         out.red = input.red;
         out.redEdge = input.redEdge;
         out.nir = input.nir;
-        out.statusNote = "OpenCV unavailable — skipped geometric alignment"; 
+        out.statusNote = "OpenCV unavailable: skipped geometric alignment"; 
         return out;
     #else 
         const cv::Size anchorSize(anchorW, anchorH); 

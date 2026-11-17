@@ -116,10 +116,11 @@ struct ProcessingConfig {
     ColormapKind colormap{ColormapKind::RdYlGn};
     MlModelMode mlModel{MlModelMode::CanopySoilMask};
     bool maskSoil{true};
+    bool maskWater{true};
     bool maskShadow{false};
     bool maskSkyGlare{true};
-    float clampMin{-0.2f};
-    float clampMax{0.9f};
+    float clampMin{0.08f};
+    float clampMax{0.90f};
     std::string customFormula{"(NIR - R) / (NIR + R)"};
 };
 

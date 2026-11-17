@@ -305,6 +305,8 @@ ApplicationWindow {
                     color: theme.textPrimary
                     font.pixelSize: 11
                     font.weight: Font.Medium
+                    elide: Text.ElideMiddle
+                    Layout.maximumWidth: 420
                 }
 
                 Rectangle { width: 1; height: 14; color: theme.border }

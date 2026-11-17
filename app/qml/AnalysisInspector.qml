@@ -122,27 +122,32 @@ Rectangle {
                         font.letterSpacing: 0.9
                     }
 
-                    RowLayout {
+                    GridLayout {
                         Layout.fillWidth: true
-                        spacing: 10
+                        columns: 2
+                        columnSpacing: 12
+                        rowSpacing: 6
 
                         Repeater {
                             model: [
                                 { lbl: appCtrl.tr.maskSoil, key: "soil" },
+                                { lbl: appCtrl.tr.maskWater, key: "water" },
                                 { lbl: appCtrl.tr.maskShadow, key: "shadow" },
                                 { lbl: appCtrl.tr.maskGlare, key: "glare" }
                             ]
                             delegate: Item {
-                                width: maskRow.implicitWidth
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 1
                                 height: 22
                                 readonly property bool checkedVal:
                                     modelData.key === "soil" ? appCtrl.maskSoil :
+                                    modelData.key === "water" ? appCtrl.maskWater :
                                     modelData.key === "shadow" ? appCtrl.maskShadow : appCtrl.maskSkyGlare
 
                                 Row {
                                     id: maskRow
                                     anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 5
+                                    spacing: 6
 
                                     Rectangle {
                                         width: 15
@@ -173,6 +178,7 @@ Rectangle {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
                                         if (modelData.key === "soil") appCtrl.maskSoil = !appCtrl.maskSoil;
+                                        else if (modelData.key === "water") appCtrl.maskWater = !appCtrl.maskWater;
                                         else if (modelData.key === "shadow") appCtrl.maskShadow = !appCtrl.maskShadow;
                                         else appCtrl.maskSkyGlare = !appCtrl.maskSkyGlare;
                                     }

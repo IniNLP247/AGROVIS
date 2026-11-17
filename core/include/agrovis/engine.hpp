@@ -38,6 +38,13 @@ public:
         const CaptureGroup& group,
         const ProcessingConfig& config);
 
+    /// Computes spectral index values, background masks, KPI summary, and false-color overlay
+    /// for a populated WorkbenchOutput cube.
+    static void renderIndexOverlay(
+        const ProcessingConfig& config,
+        WorkbenchOutput& output,
+        const std::string& statusNote = {});
+
     /// Probes reflectance & computed index values at pixel coordinate (@p x, @p y).
     static PixelProbe probePixel(const WorkbenchOutput& output, int x, int y);
 

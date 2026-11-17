@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 #include "agrovis/capture_scanner.hpp"
 #include "agrovis/engine.hpp"
@@ -21,6 +22,41 @@ QImage toQImage(const agrovis::RgbaImage& src) {
     if (src.empty()) return {};
     QImage view(src.pixels.data(), src.width, src.height, src.width * 4, QImage::Format_RGBA8888);
     return view.copy();
+}
+
+void computeAutoFitBounds(const agrovis::WorkbenchOutput& out, float& minOut, float& maxOut) {
+    const size_t n = out.indexValues.size();
+    if (n == 0) return;
+
+    std::vector<float> samples;
+    samples.reserve(4096);
+    const size_t stride = std::max<size_t>(1, n / 40000);
+    const bool hasMask = (out.validMask.size() == n);
+
+    for (size_t i = 0; i < n; i += stride) {
+        if (hasMask && out.validMask[i] == 0) continue;
+        const float v = out.indexValues[i];
+        if (std::isfinite(v)) samples.push_back(v);
+    }
+    if (samples.size() < 16) {
+        samples.clear();
+        for (size_t i = 0; i < n; i += stride) {
+            const float v = out.indexValues[i];
+            if (std::isfinite(v)) samples.push_back(v);
+        }
+    }
+    if (samples.empty()) return;
+
+    std::sort(samples.begin(), samples.end());
+    float lo = samples[(samples.size() - 1) * 2 / 100];
+    float hi = samples[(samples.size() - 1) * 98 / 100];
+    if (hi - lo < 0.08f) {
+        const float mid = 0.5f * (lo + hi);
+        lo = mid - 0.04f;
+        hi = mid + 0.04f;
+    }
+    minOut = std::floor(lo * 100.0f) / 100.0f;
+    maxOut = std::ceil(hi * 100.0f) / 100.0f;
 }
 
 struct LocalizedIndexText {
@@ -202,8 +238,8 @@ QVariantMap AppController::tr() const {
 
     // Window & Top Bar
     m[QStringLiteral("windowTitle")] = ja
-        ? QStringLiteral("AGROVIS — 農作物マルチスペクトル診断")
-        : QStringLiteral("AGROVIS — Crop Multispectral Scouting");
+        ? QStringLiteral("AGROVIS - 農作物マルチスペクトル診断")
+        : QStringLiteral("AGROVIS - Crop Multispectral Scouting");
     m[QStringLiteral("appSubtitle")] = ja
         ? QStringLiteral("圃場作物チェック")
         : QStringLiteral("FIELD CROP SCOUTING");
@@ -259,7 +295,10 @@ QVariantMap AppController::tr() const {
         ? QStringLiteral("画像にカーソルを合わせると、各地点の数値を確認できます")
         : QStringLiteral("Hover canvas to inspect per-band reflectance & index value");
     m[QStringLiteral("maskedTag")] = ja ? QStringLiteral(" [除外]") : QStringLiteral(" [MASKED]");
-    m[QStringLiteral("autoBtn")] = ja ? QStringLiteral("標準") : QStringLiteral("Auto");
+    m[QStringLiteral("scaleLow")] = ja ? QStringLiteral("弱い(赤)") : QStringLiteral("Weak");
+    m[QStringLiteral("scaleHigh")] = ja ? QStringLiteral("元気(緑)") : QStringLiteral("Good");
+    m[QStringLiteral("standardBtn")] = ja ? QStringLiteral("標準表示") : QStringLiteral("Standard");
+    m[QStringLiteral("autoFitBtn")] = ja ? QStringLiteral("差を強調") : QStringLiteral("Boost Contrast");
     m[QStringLiteral("probeB")] = ja ? QStringLiteral("青:") : QStringLiteral("B:");
     m[QStringLiteral("probeG")] = ja ? QStringLiteral("緑:") : QStringLiteral("G:");
     m[QStringLiteral("probeR")] = ja ? QStringLiteral("赤:") : QStringLiteral("R:");
@@ -270,13 +309,14 @@ QVariantMap AppController::tr() const {
     m[QStringLiteral("spectralIndexHeader")] = ja ? QStringLiteral("解析方法") : QStringLiteral("SPECTRAL INDEX");
     m[QStringLiteral("bgFilterHeader")] = ja ? QStringLiteral("背景の除外設定") : QStringLiteral("BACKGROUND FILTER");
     m[QStringLiteral("maskSoil")] = ja ? QStringLiteral("土を除外") : QStringLiteral("Mask Soil");
+    m[QStringLiteral("maskWater")] = ja ? QStringLiteral("水を除外") : QStringLiteral("Water");
     m[QStringLiteral("maskShadow")] = ja ? QStringLiteral("影を除外") : QStringLiteral("Shadow");
     m[QStringLiteral("maskGlare")] = ja ? QStringLiteral("反射光") : QStringLiteral("Glare");
     m[QStringLiteral("healthHeader")] = ja ? QStringLiteral("作物の健康状態（目安）") : QStringLiteral("CROP HEALTH ESTIMATE");
     m[QStringLiteral("healthy")] = ja ? QStringLiteral("良好") : QStringLiteral("Healthy");
     m[QStringLiteral("moderate")] = ja ? QStringLiteral("やや注意") : QStringLiteral("Moderate");
     m[QStringLiteral("stressed")] = ja ? QStringLiteral("要確認") : QStringLiteral("Stressed");
-    m[QStringLiteral("soilMask")] = ja ? QStringLiteral("土・除外") : QStringLiteral("Soil/Mask");
+    m[QStringLiteral("soilMask")] = ja ? QStringLiteral("背景・除外") : QStringLiteral("Excluded");
     m[QStringLiteral("canopyKpi")] = ja ? QStringLiteral("被覆率") : QStringLiteral("CANOPY");
     m[QStringLiteral("meanKpi")] = ja ? QStringLiteral("平均値") : QStringLiteral("MEAN");
     m[QStringLiteral("stdDevKpi")] = ja ? QStringLiteral("ばらつき") : QStringLiteral("STD DEV");
@@ -298,7 +338,10 @@ QVariantMap AppController::tr() const {
     m[QStringLiteral("guideLegendGreen")] = ja ? QStringLiteral("緑：良好・元気") : QStringLiteral("Green: Healthy / Dense");
     m[QStringLiteral("guideLegendYellow")] = ja ? QStringLiteral("黄：やや注意") : QStringLiteral("Yellow: Moderate / Watch");
     m[QStringLiteral("guideLegendRed")] = ja ? QStringLiteral("赤：ストレス・低下") : QStringLiteral("Red: Stressed / Low");
-    m[QStringLiteral("guideLegendGray")] = ja ? QStringLiteral("濃い灰色：土・道・除外") : QStringLiteral("Dark Gray: Soil / Excluded");
+    m[QStringLiteral("guideLegendGray")] = ja ? QStringLiteral("濃い灰色：土・水・道・除外") : QStringLiteral("Dark Gray: Soil / Water / Excluded");
+    m[QStringLiteral("guideScaleTip")] = ja
+        ? QStringLiteral("下バーの「標準表示」が正しい生育基準での色分けです。畑全体が同じ色に見えて違いが分かりにくいときだけ「差を強調」を押すと、写真の中のわずかな差が見やすくなります（右の「健康状態」の割合は常に標準基準のまま変わりません）。")
+        : QStringLiteral("Bottom Scale Bar: \"Standard\" shows true calibrated health benchmarks. Click \"Boost Contrast\" only when a field looks uniform and you want to highlight subtle within-photo differences (Crop Health Estimate % always stays anchored to true Standard benchmarks).");
 
     return m;
 }
@@ -363,9 +406,11 @@ void AppController::setSpectralIndex(int v) {
     const auto next = specs[static_cast<size_t>(v)].id;
     if (config_.index == next) return;
     config_.index = next;
-    const auto& spec = agrovis::SpectralEngine::specFor(next);
-    config_.clampMin = spec.defaultMin;
-    config_.clampMax = spec.defaultMax;
+    if (!autoRange_) {
+        const auto& spec = agrovis::SpectralEngine::specFor(next);
+        config_.clampMin = spec.defaultMin;
+        config_.clampMax = spec.defaultMax;
+    }
     emit configChanged();
     reprocess();
 }
@@ -409,6 +454,13 @@ void AppController::setMaskSoil(bool v) {
     reprocess();
 }
 
+void AppController::setMaskWater(bool v) {
+    if (config_.maskWater == v) return;
+    config_.maskWater = v;
+    emit configChanged();
+    reprocess();
+}
+
 void AppController::setMaskShadow(bool v) {
     if (config_.maskShadow == v) return;
     config_.maskShadow = v;
@@ -425,7 +477,8 @@ void AppController::setMaskSkyGlare(bool v) {
 
 void AppController::setClampMin(double v) {
     const float next = static_cast<float>(v);
-    if (std::fabs(config_.clampMin - next) < 1e-4f) return;
+    if (!autoRange_ && std::fabs(config_.clampMin - next) < 1e-4f) return;
+    autoRange_ = false;
     config_.clampMin = next;
     emit configChanged();
     reprocess();
@@ -433,8 +486,20 @@ void AppController::setClampMin(double v) {
 
 void AppController::setClampMax(double v) {
     const float next = static_cast<float>(v);
-    if (std::fabs(config_.clampMax - next) < 1e-4f) return;
+    if (!autoRange_ && std::fabs(config_.clampMax - next) < 1e-4f) return;
+    autoRange_ = false;
     config_.clampMax = next;
+    emit configChanged();
+    reprocess();
+}
+
+void AppController::setAutoRange(bool v) {
+    if (!v) {
+        resetIndexClampDefaults();
+        return;
+    }
+    if (autoRange_) return;
+    autoRange_ = true;
     emit configChanged();
     reprocess();
 }
@@ -567,6 +632,7 @@ void AppController::loadFolder(const QUrl& folderUrl) {
 }
 
 void AppController::resetIndexClampDefaults() {
+    autoRange_ = false;
     const auto& spec = agrovis::SpectralEngine::specFor(config_.index);
     config_.clampMin = spec.defaultMin;
     config_.clampMax = spec.defaultMax;
@@ -624,11 +690,12 @@ void AppController::reprocess(bool showLoadingImmediately) {
             capCopy = *cap;
         }
     }
-    const agrovis::ProcessingConfig cfgCopy = config_;
+    agrovis::ProcessingConfig cfgCopy = config_;
+    const bool autoFit = autoRange_;
     QPointer<AppController> self(this);
 
     QThreadPool::globalInstance()->start(
-        [self, seq, seqRef, useSynthetic, capCopy = std::move(capCopy), cfgCopy]() {
+        [self, seq, seqRef, useSynthetic, capCopy = std::move(capCopy), cfgCopy, autoFit]() mutable {
             if (seq != seqRef->load()) {
                 return;
             }
@@ -641,6 +708,15 @@ void AppController::reprocess(bool showLoadingImmediately) {
                 return;
             }
 
+            if (autoFit && cfgCopy.index != agrovis::SpectralIndex::RGB) {
+                computeAutoFitBounds(out, cfgCopy.clampMin, cfgCopy.clampMax);
+                out = useSynthetic
+                    ? agrovis::SpectralEngine::processSyntheticSample(cfgCopy)
+                    : agrovis::SpectralEngine::processCaptureGroup(capCopy, cfgCopy);
+            }
+
+            const float appliedMin = cfgCopy.clampMin;
+            const float appliedMax = cfgCopy.clampMax;
             QImage baseImg = toQImage(out.baseRgb);
             QImage overlayImg = toQImage(out.indexOverlay);
 
@@ -648,7 +724,7 @@ void AppController::reprocess(bool showLoadingImmediately) {
                 QMetaObject::invokeMethod(
                     self.data(),
                     [self, seq, out = std::move(out), baseImg = std::move(baseImg),
-                     overlayImg = std::move(overlayImg)]() mutable {
+                     overlayImg = std::move(overlayImg), autoFit, appliedMin, appliedMax]() mutable {
                         if (!self || seq != self->activeJobSeq_->load()) {
                             return;
                         }
@@ -656,6 +732,16 @@ void AppController::reprocess(bool showLoadingImmediately) {
                         self->currentOutput_ = std::move(out);
                         self->imageProvider_->setImages(std::move(baseImg), std::move(overlayImg));
                         ++self->imageRevision_;
+                        if (autoFit) {
+                            const bool rangeMoved =
+                                (std::fabs(self->config_.clampMin - appliedMin) > 1e-4f) ||
+                                (std::fabs(self->config_.clampMax - appliedMax) > 1e-4f);
+                            self->config_.clampMin = appliedMin;
+                            self->config_.clampMax = appliedMax;
+                            if (rangeMoved) {
+                                emit self->configChanged();
+                            }
+                        }
                         if (self->isLoading_) {
                             self->isLoading_ = false;
                             emit self->loadingChanged();

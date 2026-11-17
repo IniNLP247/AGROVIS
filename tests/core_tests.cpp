@@ -178,15 +178,163 @@ void testRegistrationSyntheticShift() {
 #endif
 }
 
+void testSubfolderDatasetGrouping() {
+    const fs::path tmpDir = fs::temp_directory_path() / "agrovis_subfolder_test";
+    fs::remove_all(tmpDir);
+    fs::create_directories(tmpDir / "RGB");
+    fs::create_directories(tmpDir / "Multispectral");
+    fs::create_directories(tmpDir / "Masks");
+    fs::create_directories(tmpDir / "Overlay");
+    fs::create_directories(tmpDir / "Metadata");
+
+    const std::string stem =
+        "DJI_DateTime_2024_06_02_13_42_0035_lat_10.3040603_lon_105.2619317_alt_20.018m";
+    touchFile(tmpDir / "RGB" / (stem + ".JPG"));
+    touchFile(tmpDir / "Multispectral" / (stem + "_G.TIF"));
+    touchFile(tmpDir / "Multispectral" / (stem + "_R.TIF"));
+    touchFile(tmpDir / "Multispectral" / (stem + "_RE.TIF"));
+    touchFile(tmpDir / "Multispectral" / (stem + "_NIR.TIF"));
+    touchFile(tmpDir / "Masks" / (stem + ".png"));
+    touchFile(tmpDir / "Overlay" / (stem + ".JPG"));
+
+    const auto groups = agrovis::CaptureScanner::scanDirectory(tmpDir.string());
+    assert(groups.size() == 1);
+    const auto& g = groups[0];
+    assert(g.groupId == stem);
+    assert(g.timestampLabel == "2024-06-02 13:42 #0035");
+    assert(g.sensorProfile == agrovis::SensorProfile::DjiMavic3M);
+    assert(g.hasRgb() && g.hasGreen() && g.hasRed() && g.hasRedEdge() && g.hasNir());
+    assert(g.spectralBandCount() == 4);
+
+    fs::remove_all(tmpDir);
+}
+
+void testWaterMaskFilter() {
+    using namespace agrovis;
+
+    auto makeCube = [](bool includeNir) {
+        WorkbenchOutput out;
+        out.width = 5;
+        out.height = 1;
+        out.baseRgb.width = 5;
+        out.baseRgb.height = 1;
+        out.baseRgb.pixels.resize(5 * 4, 255);
+        out.blueBand.resize(5);
+        out.greenBand.resize(5);
+        out.redBand.resize(5);
+        out.redEdgeBand.resize(5, 0.2f);
+        out.nirBand.resize(5);
+
+        auto setPx = [&](int i, uint8_t rgbR, uint8_t rgbG, uint8_t rgbB,
+                         float g, float r, float nir) {
+            out.baseRgb.pixels[i * 4 + 0] = rgbR;
+            out.baseRgb.pixels[i * 4 + 1] = rgbG;
+            out.baseRgb.pixels[i * 4 + 2] = rgbB;
+            out.blueBand[i] = static_cast<float>(rgbB) / 255.0f;
+            out.greenBand[i] = g;
+            out.redBand[i] = r;
+            out.nirBand[i] = includeNir ? nir : 0.0f;
+        };
+
+        // 0: Healthy rice (must remain active)
+        setPx(0, 76, 112, 33, 0.09f, 0.04f, 0.50f);
+        // 1: Deep/open water (NDWI(G, NIR) > 0)
+        setPx(1, 32, 42, 46, 0.12f, 0.09f, 0.03f);
+        // 2: Shallow sky-reflecting paddy puddle (NDVI ~ 0.41, B/R > 0.83, suppressed NIR)
+        setPx(2, 88, 102, 90, 0.10f, 0.08f, 0.19f);
+        // 3: Ripening yellow rice (NDVI ~ 0.46, B/R ~ 0.58 -> must NOT be masked as water)
+        setPx(3, 115, 114, 67, 0.13f, 0.14f, 0.38f);
+        // 4: Uncalibrated 8-bit lush green rice where G slightly exceeds NIR (NDVI ~ 0.20, bright RGB green)
+        setPx(4, 94, 118, 56, 0.24f, 0.15f, 0.22f);
+        return out;
+    };
+
+    ProcessingConfig cfg;
+    cfg.index = SpectralIndex::NDVI;
+    cfg.maskSoil = true;
+    cfg.maskWater = true;
+
+    auto masked = makeCube(true);
+    SpectralEngine::renderIndexOverlay(cfg, masked);
+    assert(masked.validMask[0] == 1);
+    assert(masked.validMask[1] == 0);
+    assert(masked.validMask[2] == 0);
+    assert(masked.validMask[3] == 1);
+    assert(masked.validMask[4] == 1);
+
+    cfg.maskWater = false;
+    auto unmasked = makeCube(true);
+    SpectralEngine::renderIndexOverlay(cfg, unmasked);
+    assert(unmasked.validMask[0] == 1);
+    assert(unmasked.validMask[2] == 1);
+    assert(unmasked.validMask[3] == 1);
+    assert(unmasked.validMask[4] == 1);
+
+    // Without an NIR band, water masking must not false-trigger on visible green foliage.
+    cfg.maskSoil = false;
+    cfg.maskWater = true;
+    auto rgbOnly = makeCube(false);
+    SpectralEngine::renderIndexOverlay(cfg, rgbOnly);
+    assert(rgbOnly.validMask[0] == 1);
+    assert(rgbOnly.validMask[3] == 1);
+}
+
+void testHealthSummaryFollowsActiveIndexAndScale() {
+    using namespace agrovis;
+
+    WorkbenchOutput out;
+    out.width = 2;
+    out.height = 1;
+    out.baseRgb.width = 2;
+    out.baseRgb.height = 1;
+    out.baseRgb.pixels = {
+        95, 130, 50, 255,   // Vibrant green leaf (~VARI +0.20)
+        95, 130, 50, 255
+    };
+    out.blueBand = {0.20f, 0.20f};
+    out.greenBand = {0.21f, 0.21f};
+    out.redBand = {0.16f, 0.16f};
+    out.redEdgeBand = {0.24f, 0.24f};
+    // Low uncalibrated NIR (~NDVI 0.14): at standard 0.08..0.90 it's low,
+    // but at 0.00..0.20 scale or in VARI mode it must register as Healthy!
+    out.nirBand = {0.21f, 0.21f};
+
+    ProcessingConfig cfg;
+    cfg.index = SpectralIndex::NDVI;
+    cfg.maskSoil = false;
+    cfg.maskWater = false;
+    cfg.clampMin = 0.00f;
+    cfg.clampMax = 0.20f;
+    auto rescaled = out;
+    SpectralEngine::renderIndexOverlay(cfg, rescaled);
+    // Boosted visual display range stretches the overlay toward green (G > R) while
+    // Crop Health Estimate stays anchored to Standard NDVI benchmarks (low NIR => Stressed).
+    assert(rescaled.indexOverlay.pixels[1] > rescaled.indexOverlay.pixels[0]);
+    assert(rescaled.summary.stressedPct > 90.0);
+
+    // Switching to VARI must evaluate VARI (~+0.20 -> Healthy on Standard -0.08..0.22) even with maskSoil enabled.
+    cfg.index = SpectralIndex::VARI;
+    cfg.maskSoil = true;
+    cfg.clampMin = -0.08f;
+    cfg.clampMax = 0.22f;
+    auto variOut = out;
+    SpectralEngine::renderIndexOverlay(cfg, variOut);
+    assert(variOut.summary.canopyCoverPct > 90.0);
+    assert(variOut.summary.healthyPct > 90.0);
+}
+
 }  // namespace
 
 int main() {
     testCaptureScannerGrouping();
+    testSubfolderDatasetGrouping();
     testSensorIndexGating();
     testCustomFormulaParser();
     testSyntheticPlotAndProbe();
     testRadiometryXmpAndCalibration();
     testRegistrationSyntheticShift();
+    testWaterMaskFilter();
+    testHealthSummaryFollowsActiveIndexAndScale();
     std::cout << "All agrovis_core tests passed.\n";
     return 0;
 }

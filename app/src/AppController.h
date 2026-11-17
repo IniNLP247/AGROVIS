@@ -40,10 +40,12 @@ class AppController : public QObject {
     Q_PROPERTY(int colormapKind READ colormapKind WRITE setColormapKind NOTIFY configChanged)
     Q_PROPERTY(int mlModelMode READ mlModelMode WRITE setMlModelMode NOTIFY configChanged)
     Q_PROPERTY(bool maskSoil READ maskSoil WRITE setMaskSoil NOTIFY configChanged)
+    Q_PROPERTY(bool maskWater READ maskWater WRITE setMaskWater NOTIFY configChanged)
     Q_PROPERTY(bool maskShadow READ maskShadow WRITE setMaskShadow NOTIFY configChanged)
     Q_PROPERTY(bool maskSkyGlare READ maskSkyGlare WRITE setMaskSkyGlare NOTIFY configChanged)
     Q_PROPERTY(double clampMin READ clampMin WRITE setClampMin NOTIFY configChanged)
     Q_PROPERTY(double clampMax READ clampMax WRITE setClampMax NOTIFY configChanged)
+    Q_PROPERTY(bool autoRange READ autoRange WRITE setAutoRange NOTIFY configChanged)
     Q_PROPERTY(QString customFormula READ customFormula WRITE setCustomFormula NOTIFY configChanged)
 
     Q_PROPERTY(QVariantList indexMetaList READ indexMetaList NOTIFY configChanged)
@@ -112,6 +114,8 @@ public:
     void setMlModelMode(int v);
     bool maskSoil() const { return config_.maskSoil; }
     void setMaskSoil(bool v);
+    bool maskWater() const { return config_.maskWater; }
+    void setMaskWater(bool v);
     bool maskShadow() const { return config_.maskShadow; }
     void setMaskShadow(bool v);
     bool maskSkyGlare() const { return config_.maskSkyGlare; }
@@ -120,6 +124,8 @@ public:
     void setClampMin(double v);
     double clampMax() const { return config_.clampMax; }
     void setClampMax(double v);
+    bool autoRange() const { return autoRange_; }
+    void setAutoRange(bool v);
     QString customFormula() const { return QString::fromStdString(config_.customFormula); }
     void setCustomFormula(const QString& expr);
 
@@ -179,6 +185,7 @@ private:
     int selectedCaptureIndex_{-1};
 
     agrovis::ProcessingConfig config_;
+    bool autoRange_{false};
     agrovis::WorkbenchOutput currentOutput_;
     int imageRevision_{0};
 

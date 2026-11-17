@@ -90,6 +90,14 @@ Rectangle {
                             }
                         }
                     }
+
+                    Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: appCtrl.tr.guideScaleTip
+                        color: theme.textMuted
+                        font.pixelSize: 12
+                    }
                 }
             }
 

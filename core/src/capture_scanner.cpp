@@ -1,14 +1,40 @@
 #include "agrovis/capture_scanner.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <filesystem>
 #include <map>
+#include <string_view>
 
 namespace fs = std::filesystem;
 
 namespace agrovis {
 namespace {
+
+enum class BandRole { RGB, Blue, Green, Red, RedEdge, Nir };
+
+struct SuffixRule {
+    std::string_view suffix;
+    BandRole role;
+    SensorProfile profile;
+};
+
+constexpr std::array<SuffixRule, 13> kSuffixRules{{
+    {"_MS_NIR", BandRole::Nir,     SensorProfile::DjiMavic3M},
+    {"_MS_RE",  BandRole::RedEdge, SensorProfile::DjiMavic3M},
+    {"_MS_G",   BandRole::Green,   SensorProfile::DjiMavic3M},
+    {"_MS_R",   BandRole::Red,     SensorProfile::DjiMavic3M},
+    {"_MS_B",   BandRole::Blue,    SensorProfile::GenericMultiTiff},
+    {"_NIR",    BandRole::Nir,     SensorProfile::Pi5DualRgbNir850},
+    {"_850",    BandRole::Nir,     SensorProfile::Pi5DualRgbNir850},
+    {"_RE",     BandRole::RedEdge, SensorProfile::DjiMavic3M},
+    {"_G",      BandRole::Green,   SensorProfile::DjiMavic3M},
+    {"_R",      BandRole::Red,     SensorProfile::DjiMavic3M},
+    {"_B",      BandRole::Blue,    SensorProfile::GenericMultiTiff},
+    {"_RGB",    BandRole::RGB,     SensorProfile::Pi5DualRgbNir850},
+    {"_D",      BandRole::RGB,     SensorProfile::DjiMavic3M},
+}};
 
 std::string toUpper(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
@@ -17,39 +43,57 @@ std::string toUpper(std::string s) {
     return s;
 }
 
-bool endsWith(const std::string& str, const std::string& suffix) {
-    if (str.size() < suffix.size()) return false;
-    return str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+bool endsWith(std::string_view str, std::string_view suffix) {
+    return str.size() >= suffix.size() &&
+           str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-bool isImageExtension(const std::string& upperExt) {
+bool isImageExtension(std::string_view upperExt) {
     return upperExt == ".JPG" || upperExt == ".JPEG" || upperExt == ".PNG" ||
            upperExt == ".TIF" || upperExt == ".TIFF" || upperExt == ".DNG";
 }
 
+bool isIgnoredSubdir(std::string_view upperDir) {
+    return upperDir == "MASKS" || upperDir == "MASK" ||
+           upperDir == "OVERLAY" || upperDir == "OVERLAYS" ||
+           upperDir == "METADATA" || upperDir == "LABELS" ||
+           upperDir == "LABEL" || upperDir == "ANNOTATIONS" ||
+           upperDir == "GROUNDTRUTH" || upperDir == "GROUND_TRUTH" ||
+           upperDir == ".GIT" || upperDir == "__MACOSX";
+}
+
+bool isRgbSubdir(std::string_view upperDir) {
+    return upperDir == "RGB" || upperDir == "COLOR" ||
+           upperDir == "TRUECOLOR" || upperDir == "TRUE_COLOR";
+}
+
 std::string extractDjiTimestampLabel(const std::string& stem) {
-    // Expected DJI pattern: DJI_YYYYMMDDHHMMSS_NNNN
-    if (stem.size() >= 18 && stem.rfind("DJI_", 0) == 0) {
+    // Pattern 1: DJI_YYYYMMDDHHMMSS_NNNN
+    if (stem.size() >= 18 && stem.rfind("DJI_", 0) == 0 &&
+        std::isdigit(static_cast<unsigned char>(stem[4]))) {
         const std::string dt = stem.substr(4, 14);
         return dt.substr(0, 4) + "-" + dt.substr(4, 2) + "-" + dt.substr(6, 2) + " " +
                dt.substr(8, 2) + ":" + dt.substr(10, 2) + ":" + dt.substr(12, 2);
     }
+    // Pattern 2: DJI_DateTime_YYYY_MM_DD_HH_MM[_NNNN...]
+    if (stem.size() >= 29 && stem.rfind("DJI_DateTime_", 0) == 0) {
+        std::string label = stem.substr(13, 4) + "-" + stem.substr(18, 2) + "-" +
+                            stem.substr(21, 2) + " " + stem.substr(24, 2) + ":" +
+                            stem.substr(27, 2);
+        if (stem.size() >= 34 && stem[29] == '_') {
+            label += " #" + stem.substr(30, 4);
+        }
+        return label;
+    }
     return stem;
 }
 
-}  // namespace
-
-std::vector<CaptureGroup> CaptureScanner::scanDirectory(const std::string& directoryPath) {
-    std::vector<CaptureGroup> results;
+void scanSingleDirectory(
+    const fs::path& dir,
+    bool forceRgbRole,
+    std::map<std::string, CaptureGroup>& grouped) {
     std::error_code ec;
-    const fs::path root(directoryPath);
-    if (!fs::exists(root, ec) || !fs::is_directory(root, ec)) {
-        return results;
-    }
-
-    std::map<std::string, CaptureGroup> grouped;
-
-    for (const auto& entry : fs::directory_iterator(root, ec)) {
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
         if (ec || !entry.is_regular_file(ec)) continue;
 
         const fs::path p = entry.path();
@@ -62,42 +106,18 @@ std::vector<CaptureGroup> CaptureScanner::scanDirectory(const std::string& direc
         const std::string fullPath = p.string();
 
         std::string groupKey = stem;
-        enum class BandRole { RGB, Blue, Green, Red, RedEdge, Nir };
         BandRole role = BandRole::RGB;
         SensorProfile profile = SensorProfile::GenericMultiTiff;
 
-        if (endsWith(stemUpper, "_MS_NIR")) {
-            groupKey = stem.substr(0, stem.size() - 7);
-            role = BandRole::Nir;
-            profile = SensorProfile::DjiMavic3M;
-        } else if (endsWith(stemUpper, "_MS_RE")) {
-            groupKey = stem.substr(0, stem.size() - 6);
-            role = BandRole::RedEdge;
-            profile = SensorProfile::DjiMavic3M;
-        } else if (endsWith(stemUpper, "_MS_G")) {
-            groupKey = stem.substr(0, stem.size() - 5);
-            role = BandRole::Green;
-            profile = SensorProfile::DjiMavic3M;
-        } else if (endsWith(stemUpper, "_MS_R")) {
-            groupKey = stem.substr(0, stem.size() - 5);
-            role = BandRole::Red;
-            profile = SensorProfile::DjiMavic3M;
-        } else if (endsWith(stemUpper, "_MS_B")) {
-            groupKey = stem.substr(0, stem.size() - 5);
-            role = BandRole::Blue;
-            profile = SensorProfile::GenericMultiTiff;
-        } else if (endsWith(stemUpper, "_D")) {
-            groupKey = stem.substr(0, stem.size() - 2);
-            role = BandRole::RGB;
-            profile = SensorProfile::DjiMavic3M;
-        } else if (endsWith(stemUpper, "_NIR") || endsWith(stemUpper, "_850")) {
-            groupKey = stem.substr(0, stem.size() - 4);
-            role = BandRole::Nir;
-            profile = SensorProfile::Pi5DualRgbNir850;
-        } else if (endsWith(stemUpper, "_RGB")) {
-            groupKey = stem.substr(0, stem.size() - 4);
-            role = BandRole::RGB;
-            profile = SensorProfile::Pi5DualRgbNir850;
+        if (!forceRgbRole) {
+            for (const auto& rule : kSuffixRules) {
+                if (endsWith(stemUpper, rule.suffix) && stem.size() > rule.suffix.size()) {
+                    groupKey = stem.substr(0, stem.size() - rule.suffix.size());
+                    role = rule.role;
+                    profile = rule.profile;
+                    break;
+                }
+            }
         }
 
         auto& grp = grouped[groupKey];
@@ -119,9 +139,34 @@ std::vector<CaptureGroup> CaptureScanner::scanDirectory(const std::string& direc
             case BandRole::Nir: grp.nirPath = fullPath; break;
         }
     }
+}
+
+}  // namespace
+
+std::vector<CaptureGroup> CaptureScanner::scanDirectory(const std::string& directoryPath) {
+    std::vector<CaptureGroup> results;
+    std::error_code ec;
+    const fs::path root(directoryPath);
+    if (!fs::exists(root, ec) || !fs::is_directory(root, ec)) {
+        return results;
+    }
+
+    std::map<std::string, CaptureGroup> grouped;
+    scanSingleDirectory(root, false, grouped);
+
+    // Also inspect immediate non-excluded subdirectories (e.g. RGB/, Multispectral/).
+    for (const auto& entry : fs::directory_iterator(root, ec)) {
+        if (ec || !entry.is_directory(ec)) continue;
+        const std::string dirUpper = toUpper(entry.path().filename().string());
+        if (isIgnoredSubdir(dirUpper)) continue;
+        scanSingleDirectory(entry.path(), isRgbSubdir(dirUpper), grouped);
+    }
 
     results.reserve(grouped.size());
     for (auto& [key, grp] : grouped) {
+        if (grp.hasRedEdge() || (grp.hasGreen() && grp.hasRed() && grp.hasNir())) {
+            grp.sensorProfile = SensorProfile::DjiMavic3M;
+        }
         results.push_back(std::move(grp));
     }
     return results;

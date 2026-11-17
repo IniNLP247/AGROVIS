@@ -224,6 +224,37 @@ void sampleRamp(const std::array<RgbStop, N>& stops, float t, uint8_t& r, uint8_
     b = stops.back().b;
 }
 
+bool isWaterPixel(
+    bool hasNirBand,
+    float gBand,
+    float nirBand,
+    float ndviProxy,
+    bool hasBaseRgb,
+    float rgbR,
+    float rgbG,
+    float rgbB) {
+    if (!hasNirBand) {
+        return false;
+    }
+    const bool hasChroma =
+        hasBaseRgb && ((std::fabs(rgbR - rgbG) > 1e-3f) || (std::fabs(rgbG - rgbB) > 1e-3f));
+    const bool looksLeafyGreen =
+        hasChroma && (rgbG > rgbR) && ((rgbG - rgbB) > 0.12f) && (ndviProxy > 0.0f);
+
+    // 1) Open/deep water: water absorbs NIR strongly relative to Green (McFeeters NDWI > 0),
+    //    unless RGB proves vibrant leafy foliage on uncalibrated 8-bit exports.
+    const float ndwi = safeDiv(gBand - nirBand, gBand + nirBand);
+    if (ndwi > 0.0f && ndviProxy < 0.35f && !looksLeafyGreen) {
+        return true;
+    }
+    // 2) Shallow flooded paddy water reflecting skylight (requires real color RGB chroma).
+    if (hasChroma && rgbB > 0.14f && rgbB > rgbR * 0.83f &&
+        (rgbG - rgbB) < 0.095f && nirBand < 0.30f && ndviProxy < 0.55f) {
+        return true;
+    }
+    return false;
+}
+
 void computeHealthSummaryAndOverlay(
     const ProcessingConfig& cfg,
     WorkbenchOutput& out,
@@ -238,8 +269,19 @@ void computeHealthSummaryAndOverlay(
     out.indexOverlay.height = out.height;
     out.indexOverlay.pixels.resize(static_cast<size_t>(total) * 4);
 
+    bool hasNirBand = false;
+    for (float v : out.nirBand) {
+        if (v > 1e-4f) {
+            hasNirBand = true;
+            break;
+        }
+    }
+    const bool hasBaseRgb = (out.baseRgb.pixels.size() >= static_cast<size_t>(total) * 4);
+
     bool customValid = true;
     const float invSpan = 1.0f / std::max(1e-4f, cfg.clampMax - cfg.clampMin);
+    const auto& activeSpec = SpectralEngine::specFor(cfg.index);
+    const float invPhysSpan = 1.0f / std::max(1e-4f, activeSpec.defaultMax - activeSpec.defaultMin);
 
     int domainCount = 0;
     int soilCount = 0;
@@ -270,15 +312,36 @@ void computeHealthSummaryAndOverlay(
 
         const float ndviProxy = safeDiv(nir - r, nir + r);
         const float brightness = (b + g + r) / 3.0f;
+        const float rgbR = hasBaseRgb ? (out.baseRgb.pixels[px + 0] / 255.0f) : r;
+        const float rgbG = hasBaseRgb ? (out.baseRgb.pixels[px + 1] / 255.0f) : g;
+        const float rgbB = hasBaseRgb ? (out.baseRgb.pixels[px + 2] / 255.0f) : b;
+        const float visVari = safeDiv(rgbG - rgbR, rgbG + rgbR - rgbB);
+        const bool useVisibleSoilFilter = (!hasNirBand || cfg.index == SpectralIndex::VARI);
 
         bool keep = true;
-        if (cfg.maskSoil && ndviProxy < 0.18f) keep = false;
-        if (cfg.maskShadow && brightness < 0.045f) keep = false;
-        if (cfg.maskSkyGlare && brightness > 0.72f && ndviProxy < 0.2f) keep = false;
+        if (cfg.maskSoil) {
+            if (useVisibleSoilFilter) {
+                if (visVari < 0.02f) keep = false;
+            } else if (ndviProxy < 0.18f) {
+                keep = false;
+            }
+        }
+        if (keep && cfg.maskWater) {
+            if (isWaterPixel(hasNirBand, g, nir, ndviProxy, hasBaseRgb, rgbR, rgbG, rgbB)) {
+                keep = false;
+            }
+        }
+        if (keep && cfg.maskShadow && brightness < 0.045f) keep = false;
+        if (keep && cfg.maskSkyGlare && brightness > 0.72f && ndviProxy < 0.2f) keep = false;
 
         out.validMask[i] = keep ? 1 : 0;
-        const float idxVal = computeSinglePixelIndex(cfg, b, g, r, re, nir, &customValid);
+        const bool hasRgbChroma =
+            hasBaseRgb && ((std::fabs(rgbR - rgbG) > 1e-3f) || (std::fabs(rgbG - rgbB) > 1e-3f));
+        const float idxVal = (cfg.index == SpectralIndex::VARI && hasRgbChroma)
+            ? visVari
+            : computeSinglePixelIndex(cfg, b, g, r, re, nir, &customValid);
         out.indexValues[i] = idxVal;
+        const float norm = (idxVal - cfg.clampMin) * invSpan;
 
         if (!keep) {
             ++soilCount;
@@ -286,19 +349,37 @@ void computeHealthSummaryAndOverlay(
             ++activeCount;
             sum += idxVal;
             sumSq += static_cast<double>(idxVal) * idxVal;
-            if (ndviProxy < 0.42f) {
-                ++stressedCount;
-            } else if (ndviProxy < 0.68f) {
-                ++moderateCount;
+            if (cfg.index == SpectralIndex::RGB) {
+                const float refVal = hasNirBand ? ndviProxy : visVari;
+                const float lowCut = hasNirBand ? 0.42f : 0.11f;
+                const float highCut = hasNirBand ? 0.68f : 0.24f;
+                if (refVal < lowCut) ++stressedCount;
+                else if (refVal < highCut) ++moderateCount;
+                else ++healthyCount;
             } else {
-                ++healthyCount;
+                // Health summary always follows each index's fixed Standard benchmark so
+                // relative visual contrast stretching ("Boost Contrast") never distorts health KPIs.
+                const float physNorm = (idxVal - activeSpec.defaultMin) * invPhysSpan;
+                if (physNorm < 0.42f) {
+                    ++stressedCount;
+                } else if (physNorm < 0.68f) {
+                    ++moderateCount;
+                } else {
+                    ++healthyCount;
+                }
             }
         }
 
         if (cfg.index == SpectralIndex::RGB) {
-            out.indexOverlay.pixels[px + 0] = out.baseRgb.pixels[px + 0];
-            out.indexOverlay.pixels[px + 1] = out.baseRgb.pixels[px + 1];
-            out.indexOverlay.pixels[px + 2] = out.baseRgb.pixels[px + 2];
+            if (hasBaseRgb) {
+                out.indexOverlay.pixels[px + 0] = out.baseRgb.pixels[px + 0];
+                out.indexOverlay.pixels[px + 1] = out.baseRgb.pixels[px + 1];
+                out.indexOverlay.pixels[px + 2] = out.baseRgb.pixels[px + 2];
+            } else {
+                out.indexOverlay.pixels[px + 0] = toByte(r);
+                out.indexOverlay.pixels[px + 1] = toByte(g);
+                out.indexOverlay.pixels[px + 2] = toByte(b);
+            }
             out.indexOverlay.pixels[px + 3] = 255;
         } else if (!keep) {
             // Masked non-canopy pixels render muted neutral slate so bare soil/shadows stand out clearly.
@@ -308,7 +389,6 @@ void computeHealthSummaryAndOverlay(
             out.indexOverlay.pixels[px + 2] = static_cast<uint8_t>(luma + 4);
             out.indexOverlay.pixels[px + 3] = 255;
         } else {
-            const float norm = (idxVal - cfg.clampMin) * invSpan;
             uint8_t cr = 0, cg = 0, cb = 0;
             SpectralEngine::mapColor(cfg.colormap, norm, cr, cg, cb);
             out.indexOverlay.pixels[px + 0] = cr;
@@ -336,7 +416,7 @@ void computeHealthSummaryAndOverlay(
             "Unavailable on " + SpectralEngine::sensorDisplayName(cfg.sensorProfile) +
             " (no RedEdge band)";
     } else if (cfg.index == SpectralIndex::Custom && !customValid) {
-        out.summary.statusNote = "Invalid custom formula — check band tokens (B, G, R, RE, NIR)";
+        out.summary.statusNote = "Invalid custom formula: check band tokens (B, G, R, RE, NIR)";
     } else {
         out.summary.statusNote = statusNote;
     }
@@ -347,17 +427,17 @@ void computeHealthSummaryAndOverlay(
 const std::vector<SpectralIndexSpec>& SpectralEngine::allIndexSpecs() {
     static const std::vector<SpectralIndexSpec> specs = {
         {SpectralIndex::RGB, "RGB", "True Color RGB", "R, G, B composite", false, false, true, 0.0f, 1.0f},
-        {SpectralIndex::NDVI, "NDVI", "Normalized Difference Veg. Index", "(NIR - R) / (NIR + R)", true, false, false, -0.2f, 0.9f},
-        {SpectralIndex::NDRE, "NDRE", "Normalized Difference Red Edge", "(NIR - RE) / (NIR + RE)", true, true, false, -0.1f, 0.7f},
-        {SpectralIndex::GNDVI, "GNDVI", "Green NDVI", "(NIR - G) / (NIR + G)", true, false, false, -0.2f, 0.9f},
-        {SpectralIndex::SAVI, "SAVI", "Soil-Adjusted Veg. Index", "1.5 * (NIR - R) / (NIR + R + 0.5)", true, false, false, -0.2f, 0.85f},
-        {SpectralIndex::OSAVI, "OSAVI", "Optimized SAVI", "1.16 * (NIR - R) / (NIR + R + 0.16)", true, false, false, -0.2f, 0.9f},
-        {SpectralIndex::MSAVI2, "MSAVI2", "Modified SAVI 2", "(2*NIR + 1 - sqrt((2*NIR+1)^2 - 8*(NIR-R))) / 2", true, false, false, -0.2f, 0.9f},
-        {SpectralIndex::EVI, "EVI", "Enhanced Vegetation Index", "2.5*(NIR - R) / (NIR + 6*R - 7.5*B + 1)", true, false, true, -0.2f, 1.0f},
+        {SpectralIndex::NDVI, "NDVI", "Normalized Difference Veg. Index", "(NIR - R) / (NIR + R)", true, false, false, 0.08f, 0.90f},
+        {SpectralIndex::NDRE, "NDRE", "Normalized Difference Red Edge", "(NIR - RE) / (NIR + RE)", true, true, false, -0.05f, 0.65f},
+        {SpectralIndex::GNDVI, "GNDVI", "Green NDVI", "(NIR - G) / (NIR + G)", true, false, false, 0.0f, 0.85f},
+        {SpectralIndex::SAVI, "SAVI", "Soil-Adjusted Veg. Index", "1.5 * (NIR - R) / (NIR + R + 0.5)", true, false, false, 0.0f, 0.85f},
+        {SpectralIndex::OSAVI, "OSAVI", "Optimized SAVI", "1.16 * (NIR - R) / (NIR + R + 0.16)", true, false, false, 0.05f, 0.90f},
+        {SpectralIndex::MSAVI2, "MSAVI2", "Modified SAVI 2", "(2*NIR + 1 - sqrt((2*NIR+1)^2 - 8*(NIR-R))) / 2", true, false, false, 0.05f, 0.90f},
+        {SpectralIndex::EVI, "EVI", "Enhanced Vegetation Index", "2.5*(NIR - R) / (NIR + 6*R - 7.5*B + 1)", true, false, true, 0.0f, 0.95f},
         {SpectralIndex::CIgreen, "CIgreen", "Chlorophyll Index (Green)", "(NIR / G) - 1", true, false, false, 0.0f, 8.0f},
         {SpectralIndex::CIrededge, "CIre", "Chlorophyll Index (Red Edge)", "(NIR / RE) - 1", true, true, false, 0.0f, 5.0f},
-        {SpectralIndex::LCI, "LCI", "Leaf Chlorophyll Index", "(NIR - RE) / (NIR + R)", true, true, false, -0.1f, 0.7f},
-        {SpectralIndex::VARI, "VARI", "Visible Atmospherically Resistant", "(G - R) / (G + R - B)", false, false, true, -0.4f, 0.6f},
+        {SpectralIndex::LCI, "LCI", "Leaf Chlorophyll Index", "(NIR - RE) / (NIR + R)", true, true, false, -0.05f, 0.65f},
+        {SpectralIndex::VARI, "VARI", "Visible Atmospherically Resistant", "(G - R) / (G + R - B)", false, false, true, -0.08f, 0.22f},
         {SpectralIndex::Custom, "Custom", "Custom Band Expression", "User-defined formula", false, false, false, -1.0f, 1.0f},
     };
     return specs;
@@ -393,6 +473,14 @@ std::optional<float> SpectralEngine::evaluateCustomFormula(
     std::string* errorOut) {
     FormulaParser parser(formula, b, g, r, re, nir);
     return parser.parse(errorOut);
+}
+
+void SpectralEngine::renderIndexOverlay(
+    const ProcessingConfig& config,
+    WorkbenchOutput& output,
+    const std::string& statusNote) {
+    if (output.width <= 0 || output.height <= 0) return;
+    computeHealthSummaryAndOverlay(config, output, statusNote);
 }
 
 void SpectralEngine::mapColor(ColormapKind kind, float t, uint8_t& r, uint8_t& g, uint8_t& b) {
@@ -674,12 +762,17 @@ WorkbenchOutput SpectralEngine::processCaptureGroup(
         const bool fillB = cube.blue.empty();
         const bool fillG = cube.green.empty();
         const bool fillR = cube.red.empty();
+        const bool linearizeBlueOnly = (fillB && (!fillG || !fillR));
         if (fillB || fillG || fillR) {
             for (int i = 0; i < total; ++i) {
                 const size_t px = static_cast<size_t>(i) * 4;
                 if (fillR) templateOut.redBand[static_cast<size_t>(i)] = templateOut.baseRgb.pixels[px + 0] / 255.0f;
                 if (fillG) templateOut.greenBand[static_cast<size_t>(i)] = templateOut.baseRgb.pixels[px + 1] / 255.0f;
-                if (fillB) templateOut.blueBand[static_cast<size_t>(i)] = templateOut.baseRgb.pixels[px + 2] / 255.0f;
+                if (fillB) {
+                    const float bSrgb = templateOut.baseRgb.pixels[px + 2] / 255.0f;
+                    templateOut.blueBand[static_cast<size_t>(i)] =
+                        linearizeBlueOnly ? std::pow(bSrgb, 2.2f) : bSrgb;
+                }
             }
         }
 
