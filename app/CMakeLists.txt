@@ -22,6 +22,7 @@ qt_add_qml_module(agrovis_app
         qml/CaptureSidebar.qml
         qml/SpectralViewport.qml
         qml/AnalysisInspector.qml
+        qml/IndexGuideView.qml
 )
 
 target_link_libraries(agrovis_app

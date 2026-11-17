@@ -19,7 +19,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Label {
-                text: "CAPTURE QUEUE"
+                text: appCtrl.tr.captureQueue
                 color: theme.textMuted
                 font.pixelSize: 11
                 font.weight: Font.Bold
@@ -27,7 +27,7 @@ Rectangle {
                 Layout.fillWidth: true
             }
             Label {
-                text: captureList.count + " sets"
+                text: captureList.count + appCtrl.tr.setsSuffix
                 color: theme.textDim
                 font.pixelSize: 11
             }
@@ -48,7 +48,7 @@ Rectangle {
 
                 Label {
                     anchors.centerIn: parent
-                    text: "+ Load Capture Dir"
+                    text: appCtrl.tr.loadDir
                     color: theme.textPrimary
                     font.pixelSize: 11
                     font.weight: Font.Medium
@@ -72,7 +72,7 @@ Rectangle {
 
                 Label {
                     anchors.centerIn: parent
-                    text: "Sample Plot"
+                    text: appCtrl.tr.sampleBtn
                     color: appCtrl.usingSyntheticSample ? theme.accent : theme.textMuted
                     font.pixelSize: 11
                     font.weight: Font.Medium
@@ -126,20 +126,21 @@ Rectangle {
                 RowLayout {
                     Layout.fillWidth: true
                     Label {
-                        text: "Built-in Calibration Plot"
+                        text: appCtrl.tr.sampleTitle
                         color: theme.textPrimary
                         font.pixelSize: 12
                         font.weight: Font.DemiBold
                         Layout.fillWidth: true
                     }
                     Rectangle {
-                        width: 46
+                        width: sampleBadgeLbl.implicitWidth + 10
                         height: 16
                         radius: 3
                         color: theme.accentDim
                         Label {
+                            id: sampleBadgeLbl
                             anchors.centerIn: parent
-                            text: "5-BAND"
+                            text: appCtrl.tr.sampleBadge
                             color: "#FFFFFF"
                             font.pixelSize: 9
                             font.weight: Font.Bold
@@ -147,7 +148,7 @@ Rectangle {
                     }
                 }
                 Label {
-                    text: "Crop rows + stress pocket + 50% gray ref card"
+                    text: appCtrl.tr.sampleDesc
                     color: theme.textMuted
                     font.pixelSize: 10
                     elide: Text.ElideRight
@@ -205,7 +206,7 @@ Rectangle {
                     }
 
                     Label {
-                        text: timestamp + " · " + bandCount + " files"
+                        text: timestamp + " · " + bandCount + appCtrl.tr.filesSuffix
                         color: theme.textMuted
                         font.pixelSize: 10
                         elide: Text.ElideRight
@@ -216,11 +217,11 @@ Rectangle {
                         spacing: 4
                         Repeater {
                             model: [
-                                { lbl: "RGB", on: hasRgb, col: "#38BDF8" },
-                                { lbl: "G", on: hasGreen, col: "#2ECC71" },
-                                { lbl: "R", on: hasRed, col: "#EF4444" },
-                                { lbl: "RE", on: hasRedEdge, col: "#F59E0B" },
-                                { lbl: "NIR", on: hasNir, col: "#C084FC" }
+                                { lbl: appCtrl.tr.bandRgb, on: hasRgb, col: "#38BDF8" },
+                                { lbl: appCtrl.tr.bandG, on: hasGreen, col: "#2ECC71" },
+                                { lbl: appCtrl.tr.bandR, on: hasRed, col: "#EF4444" },
+                                { lbl: appCtrl.tr.bandRe, on: hasRedEdge, col: "#F59E0B" },
+                                { lbl: appCtrl.tr.bandNir, on: hasNir, col: "#C084FC" }
                             ]
                             delegate: Rectangle {
                                 visible: modelData.on
@@ -259,7 +260,7 @@ Rectangle {
                 visible: captureList.count === 0
                 wrapMode: Text.WordWrap
                 horizontalAlignment: Text.AlignHCenter
-                text: "Open a folder with your multispectral or camera images to load captures automatically."
+                text: appCtrl.tr.emptyQueueHint
                 color: theme.textDim
                 font.pixelSize: 11
             }

@@ -39,7 +39,7 @@ Rectangle {
                     RowLayout {
                         Layout.fillWidth: true
                         Label {
-                            text: "SPECTRAL INDEX"
+                            text: appCtrl.tr.spectralIndexHeader
                             color: theme.textMuted
                             font.pixelSize: 10
                             font.weight: Font.Bold
@@ -56,8 +56,8 @@ Rectangle {
 
                     GridLayout {
                         Layout.fillWidth: true
-                        columns: 6
-                        columnSpacing: 5
+                        columns: 3
+                        columnSpacing: 6
                         rowSpacing: 6
 
                         Repeater {
@@ -66,26 +66,20 @@ Rectangle {
                                 readonly property bool active: (appCtrl.spectralIndex === modelData.indexPos)
                                 readonly property bool enabledChip: modelData.supported
                                 Layout.fillWidth: true
-                                Layout.preferredWidth: boldChipMeasure.implicitWidth + 12
-                                Layout.preferredHeight: 26
+                                Layout.preferredWidth: 1
+                                Layout.preferredHeight: 28
                                 radius: 4
                                 color: !enabledChip ? "#141918" : (active ? theme.accentTint : (chipMa.containsMouse ? theme.bgHover : theme.bgControl))
                                 border.color: !enabledChip ? "#1F2825" : (active ? theme.accent : theme.border)
                                 border.width: 1
                                 opacity: enabledChip ? 1.0 : 0.48
 
-                                // Reserve bold text width so toggling selection never reflows the grid
-                                Label {
-                                    id: boldChipMeasure
-                                    visible: false
-                                    text: modelData.shortName
-                                    font.pixelSize: 11
-                                    font.weight: Font.Bold
-                                }
-
                                 Label {
                                     id: chipLbl
                                     anchors.centerIn: parent
+                                    width: parent.width - 8
+                                    horizontalAlignment: Text.AlignHCenter
+                                    elide: Text.ElideRight
                                     text: modelData.shortName
                                     color: !enabledChip ? theme.textDim : (active ? theme.accent : theme.textPrimary)
                                     font.pixelSize: 11
@@ -106,7 +100,7 @@ Rectangle {
                 }
             }
 
-            // 3. Simple Background Filter (Calibration & Parallax handled automatically by camera profile)
+            // 2. Simple Background Filter
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: pipeCol.implicitHeight + 18
@@ -121,7 +115,7 @@ Rectangle {
                     spacing: 8
 
                     Label {
-                        text: "BACKGROUND FILTER"
+                        text: appCtrl.tr.bgFilterHeader
                         color: theme.textMuted
                         font.pixelSize: 10
                         font.weight: Font.Bold
@@ -134,9 +128,9 @@ Rectangle {
 
                         Repeater {
                             model: [
-                                { lbl: "Mask Soil", key: "soil" },
-                                { lbl: "Shadow", key: "shadow" },
-                                { lbl: "Glare", key: "glare" }
+                                { lbl: appCtrl.tr.maskSoil, key: "soil" },
+                                { lbl: appCtrl.tr.maskShadow, key: "shadow" },
+                                { lbl: appCtrl.tr.maskGlare, key: "glare" }
                             ]
                             delegate: Item {
                                 width: maskRow.implicitWidth
@@ -204,7 +198,7 @@ Rectangle {
                     spacing: 8
 
                     Label {
-                        text: "CROP HEALTH ESTIMATE"
+                        text: appCtrl.tr.healthHeader
                         color: theme.textMuted
                         font.pixelSize: 10
                         font.weight: Font.Bold
@@ -234,10 +228,10 @@ Rectangle {
                         rowSpacing: 4
                         columnSpacing: 8
 
-                        Label { text: "● Healthy: " + appCtrl.healthyPct.toFixed(1) + "%"; color: "#2ECC71"; font.pixelSize: 11 }
-                        Label { text: "● Moderate: " + appCtrl.moderatePct.toFixed(1) + "%"; color: "#EAB308"; font.pixelSize: 11 }
-                        Label { text: "● Stressed: " + appCtrl.stressedPct.toFixed(1) + "%"; color: "#EF4444"; font.pixelSize: 11 }
-                        Label { text: "● Soil/Mask: " + appCtrl.soilPct.toFixed(1) + "%"; color: "#94A3B8"; font.pixelSize: 11 }
+                        Label { text: "● " + appCtrl.tr.healthy + ": " + appCtrl.healthyPct.toFixed(1) + "%"; color: "#2ECC71"; font.pixelSize: 11 }
+                        Label { text: "● " + appCtrl.tr.moderate + ": " + appCtrl.moderatePct.toFixed(1) + "%"; color: "#EAB308"; font.pixelSize: 11 }
+                        Label { text: "● " + appCtrl.tr.stressed + ": " + appCtrl.stressedPct.toFixed(1) + "%"; color: "#EF4444"; font.pixelSize: 11 }
+                        Label { text: "● " + appCtrl.tr.soilMask + ": " + appCtrl.soilPct.toFixed(1) + "%"; color: "#94A3B8"; font.pixelSize: 11 }
                     }
 
                     Rectangle { Layout.fillWidth: true; height: 1; color: theme.border }
@@ -254,7 +248,7 @@ Rectangle {
                             color: theme.bgDeep
                             Column {
                                 anchors.centerIn: parent
-                                Label { text: "CANOPY"; color: theme.textDim; font.pixelSize: 9; anchors.horizontalCenter: parent.horizontalCenter }
+                                Label { text: appCtrl.tr.canopyKpi; color: theme.textDim; font.pixelSize: 9; anchors.horizontalCenter: parent.horizontalCenter }
                                 Label { text: appCtrl.canopyCoverPct.toFixed(1) + "%"; color: theme.textPrimary; font.pixelSize: 12; font.bold: true; anchors.horizontalCenter: parent.horizontalCenter }
                             }
                         }
@@ -265,7 +259,7 @@ Rectangle {
                             color: theme.bgDeep
                             Column {
                                 anchors.centerIn: parent
-                                Label { text: "MEAN"; color: theme.textDim; font.pixelSize: 9; anchors.horizontalCenter: parent.horizontalCenter }
+                                Label { text: appCtrl.tr.meanKpi; color: theme.textDim; font.pixelSize: 9; anchors.horizontalCenter: parent.horizontalCenter }
                                 Label { text: appCtrl.meanIndex.toFixed(3); color: theme.accent; font.pixelSize: 12; font.bold: true; anchors.horizontalCenter: parent.horizontalCenter }
                             }
                         }
@@ -276,7 +270,7 @@ Rectangle {
                             color: theme.bgDeep
                             Column {
                                 anchors.centerIn: parent
-                                Label { text: "STD DEV"; color: theme.textDim; font.pixelSize: 9; anchors.horizontalCenter: parent.horizontalCenter }
+                                Label { text: appCtrl.tr.stdDevKpi; color: theme.textDim; font.pixelSize: 9; anchors.horizontalCenter: parent.horizontalCenter }
                                 Label { text: appCtrl.stdDevIndex.toFixed(3); color: theme.textPrimary; font.pixelSize: 12; font.bold: true; anchors.horizontalCenter: parent.horizontalCenter }
                             }
                         }
@@ -295,7 +289,7 @@ Rectangle {
                             anchors.margins: 7
                             spacing: 2
                             Label {
-                                text: "ROUGH ISSUE ESTIMATE"
+                                text: appCtrl.tr.roughIssueHeader
                                 color: theme.textDim
                                 font.pixelSize: 9
                                 font.weight: Font.Bold
@@ -304,7 +298,7 @@ Rectangle {
                             Label {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                text: "WIP"
+                                text: appCtrl.tr.roughIssueValue
                                 color: theme.textMuted
                                 font.pixelSize: 11
                             }

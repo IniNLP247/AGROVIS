@@ -70,7 +70,12 @@ Rectangle {
                 Row {
                     spacing: 4
                     Repeater {
-                        model: ["Split Curtain", "Side-by-Side", "Overlay", "Index Only"]
+                        model: [
+                            appCtrl.tr.modeSplit,
+                            appCtrl.tr.modeSide,
+                            appCtrl.tr.modeOverlay,
+                            appCtrl.tr.modeIndexOnly
+                        ]
                         delegate: Rectangle {
                             height: 28
                             width: vmLbl.implicitWidth + 16
@@ -104,7 +109,7 @@ Rectangle {
                     visible: appCtrl.viewMode === 2
                     spacing: 6
                     Label {
-                        text: "Opacity " + Math.round(appCtrl.overlayOpacity * 100) + "%"
+                        text: appCtrl.tr.opacityLabel + Math.round(appCtrl.overlayOpacity * 100) + "%"
                         color: theme.textMuted
                         font.pixelSize: 11
                     }
@@ -144,17 +149,28 @@ Rectangle {
 
                 // Colormap Picker
                 Label {
-                    text: "Palette"
+                    text: appCtrl.tr.paletteLabel
                     color: theme.textMuted
                     font.pixelSize: 11
                 }
                 ComboBox {
                     id: cmapCombo
-                    Layout.preferredWidth: 110
+                    Layout.preferredWidth: 126
                     Layout.preferredHeight: 28
-                    model: ["RdYlGn", "Viridis", "Turbo", "Grayscale"]
+                    model: [
+                        appCtrl.tr.palRdYlGn,
+                        appCtrl.tr.palViridis,
+                        appCtrl.tr.palTurbo,
+                        appCtrl.tr.palGray
+                    ]
                     currentIndex: appCtrl.colormapKind
                     onActivated: appCtrl.colormapKind = currentIndex
+                    Connections {
+                        target: appCtrl
+                        function onLanguageChanged() {
+                            cmapCombo.currentIndex = appCtrl.colormapKind;
+                        }
+                    }
                     contentItem: Label {
                         leftPadding: 8
                         text: cmapCombo.displayText
@@ -177,13 +193,13 @@ Rectangle {
                     spacing: 4
                     Repeater {
                         model: [
-                            { txt: "Fit", act: "fit" },
+                            { txt: appCtrl.tr.zoomFit, act: "fit" },
                             { txt: "1:1", act: "one" },
                             { txt: "-", act: "out" },
                             { txt: "+", act: "in" }
                         ]
                         delegate: Rectangle {
-                            width: modelData.txt.length > 1 ? 34 : 26
+                            width: modelData.txt.length > 1 ? Math.max(36, zLbl.implicitWidth + 12) : 26
                             height: 28
                             radius: 4
                             color: zMa.containsMouse ? theme.bgHover : theme.bgControl
@@ -191,6 +207,7 @@ Rectangle {
                             border.width: 1
 
                             Label {
+                                id: zLbl
                                 anchors.centerIn: parent
                                 text: modelData.txt
                                 color: theme.textPrimary
@@ -375,7 +392,7 @@ Rectangle {
                     Label {
                         id: lblLeft
                         anchors.centerIn: parent
-                        text: "RGB BASE"
+                        text: appCtrl.tr.baseBadge
                         color: theme.textPrimary
                         font.pixelSize: 10
                         font.bold: true
@@ -411,8 +428,8 @@ Rectangle {
 
                 Repeater {
                     model: [
-                        { title: "TRUE COLOR / BASE", key: "base" },
-                        { title: appCtrl.activeIndexName + " SPECTRAL MAP", key: "overlay" }
+                        { title: appCtrl.tr.trueColorPane, key: "base" },
+                        { title: appCtrl.activeIndexName + appCtrl.tr.spectralMapSuffix, key: "overlay" }
                     ]
                     delegate: Rectangle {
                         Layout.fillWidth: true
@@ -498,7 +515,7 @@ Rectangle {
 
                 Label {
                     anchors.centerIn: parent
-                    text: "Loading..."
+                    text: appCtrl.tr.loading
                     color: theme.accent
                     font.pixelSize: 22
                     font.weight: Font.DemiBold
@@ -529,14 +546,16 @@ Rectangle {
                     Layout.fillWidth: true
                     text: {
                         if (!viewportRoot.probeData.valid) {
-                            return "Hover canvas to inspect per-band reflectance & index value";
+                            return appCtrl.tr.hoverPrompt;
                         }
                         var p = viewportRoot.probeData;
-                        var tag = p.masked ? " [MASKED]" : "";
+                        var tag = p.masked ? appCtrl.tr.maskedTag : "";
                         return "(" + p.x + "," + p.y + ")  " +
-                               "B:" + p.blue.toFixed(2) + " G:" + p.green.toFixed(2) +
-                               " R:" + p.red.toFixed(2) + " RE:" + p.redEdge.toFixed(2) +
-                               " NIR:" + p.nir.toFixed(2) + "  |  " +
+                               appCtrl.tr.probeB + p.blue.toFixed(2) + " " +
+                               appCtrl.tr.probeG + p.green.toFixed(2) + " " +
+                               appCtrl.tr.probeR + p.red.toFixed(2) + " " +
+                               appCtrl.tr.probeRe + p.redEdge.toFixed(2) + " " +
+                               appCtrl.tr.probeNir + p.nir.toFixed(2) + "  |  " +
                                appCtrl.activeIndexName + ": " + p.indexValue.toFixed(3) + tag;
                     }
                 }
@@ -617,7 +636,7 @@ Rectangle {
                         border.color: theme.border
                         Label {
                             anchors.centerIn: parent
-                            text: "Auto"
+                            text: appCtrl.tr.autoBtn
                             color: theme.textMuted
                             font.pixelSize: 10
                         }

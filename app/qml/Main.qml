@@ -10,7 +10,7 @@ ApplicationWindow {
     minimumWidth: 1080
     minimumHeight: 680
     visible: true
-    title: "AGROVIS - Multispectral Crop Scouting & Spectral Analysis"
+    title: appCtrl.tr.windowTitle
     color: theme.bgDeep
 
     readonly property var theme: ({
@@ -34,13 +34,13 @@ ApplicationWindow {
 
     FolderDialog {
         id: folderPicker
-        title: "Select Multispectral Capture Folder"
+        title: appCtrl.tr.folderDialogTitle
         onAccepted: appCtrl.loadFolder(selectedFolder)
     }
 
     FileDialog {
         id: exportDialog
-        title: "Export Processed Spectral Overlay"
+        title: appCtrl.tr.exportDialogTitle
         fileMode: FileDialog.SaveFile
         nameFilters: ["PNG image (*.png)"]
         onAccepted: appCtrl.exportOverlayPng(selectedFile)
@@ -106,7 +106,7 @@ ApplicationWindow {
                             font.letterSpacing: 1.5
                         }
                         Label {
-                            text: "FIELD CROP SCOUTING"
+                            text: appCtrl.tr.appSubtitle
                             color: theme.textDim
                             font.pixelSize: 9
                             font.letterSpacing: 0.8
@@ -114,7 +114,91 @@ ApplicationWindow {
                     }
                 }
 
+                Rectangle { width: 1; height: 26; color: theme.border }
+
+                // Workspace Mode Tabs: Analysis | Spectral Index Information
+                Row {
+                    spacing: 6
+                    Repeater {
+                        model: [appCtrl.tr.tabAnalysis, appCtrl.tr.tabGuide]
+                        delegate: Rectangle {
+                            height: 32
+                            width: modeLbl.implicitWidth + 24
+                            radius: 6
+                            color: appCtrl.activeTab === index ? theme.accentTint : (modeMouse.containsMouse ? theme.bgHover : "transparent")
+                            border.color: appCtrl.activeTab === index ? theme.accent : "transparent"
+                            border.width: 1
+
+                            Label {
+                                id: modeLbl
+                                anchors.centerIn: parent
+                                text: modelData
+                                color: appCtrl.activeTab === index ? theme.accent : theme.textMuted
+                                font.pixelSize: 12
+                                font.weight: appCtrl.activeTab === index ? Font.DemiBold : Font.Normal
+                            }
+
+                            MouseArea {
+                                id: modeMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: appCtrl.activeTab = index
+                            }
+                        }
+                    }
+                }
+
                 Item { Layout.fillWidth: true }
+
+                // Language Toggle Pill (日本語 <-> EN)
+                Rectangle {
+                    height: 32
+                    width: langRow.implicitWidth + 8
+                    radius: 6
+                    color: theme.bgCard
+                    border.color: theme.border
+                    border.width: 1
+
+                    Row {
+                        id: langRow
+                        anchors.centerIn: parent
+                        spacing: 3
+
+                        Repeater {
+                            model: [
+                                { code: "ja", label: "日本語" },
+                                { code: "en", label: "EN" }
+                            ]
+                            delegate: Rectangle {
+                                readonly property bool activeLang: (appCtrl.language === modelData.code)
+                                width: langLbl.implicitWidth + 16
+                                height: 24
+                                radius: 4
+                                color: activeLang ? theme.accentTint : (langMa.containsMouse ? theme.bgHover : "transparent")
+                                border.color: activeLang ? theme.accent : "transparent"
+                                border.width: 1
+
+                                Label {
+                                    id: langLbl
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    color: activeLang ? theme.accent : theme.textMuted
+                                    font.pixelSize: 11
+                                    font.weight: activeLang ? Font.Bold : Font.Normal
+                                }
+
+                                MouseArea {
+                                    id: langMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: appCtrl.language = modelData.code
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Quick Load & Export Actions
                 Rectangle {
@@ -128,7 +212,7 @@ ApplicationWindow {
                     Label {
                         id: openLbl
                         anchors.centerIn: parent
-                        text: "Open Folder"
+                        text: appCtrl.tr.openFolder
                         color: theme.textPrimary
                         font.pixelSize: 12
                     }
@@ -151,7 +235,7 @@ ApplicationWindow {
                     Label {
                         id: exportLbl
                         anchors.centerIn: parent
-                        text: "Export PNG"
+                        text: appCtrl.tr.exportPng
                         color: "#07130C"
                         font.pixelSize: 12
                         font.weight: Font.Bold
@@ -169,27 +253,35 @@ ApplicationWindow {
         }
 
         // Main Workspace Body
-        RowLayout {
+        StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 0
+            currentIndex: appCtrl.activeTab
 
-            CaptureSidebar {
-                Layout.preferredWidth: 278
-                Layout.fillHeight: true
-                theme: root.theme
-                onRequestOpenFolder: folderPicker.open()
+            RowLayout {
+                spacing: 0
+
+                CaptureSidebar {
+                    Layout.preferredWidth: 278
+                    Layout.fillHeight: true
+                    theme: root.theme
+                    onRequestOpenFolder: folderPicker.open()
+                }
+
+                SpectralViewport {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    theme: root.theme
+                }
+
+                AnalysisInspector {
+                    Layout.preferredWidth: 348
+                    Layout.fillHeight: true
+                    theme: root.theme
+                }
             }
 
-            SpectralViewport {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                theme: root.theme
-            }
-
-            AnalysisInspector {
-                Layout.preferredWidth: 348
-                Layout.fillHeight: true
+            IndexGuideView {
                 theme: root.theme
             }
         }
@@ -226,7 +318,7 @@ ApplicationWindow {
                 }
 
                 Label {
-                    text: "Processed in " + appCtrl.processingMs.toFixed(1) + " ms"
+                    text: appCtrl.tr.processedPrefix + appCtrl.processingMs.toFixed(1) + " ms"
                     color: theme.textDim
                     font.pixelSize: 11
                 }

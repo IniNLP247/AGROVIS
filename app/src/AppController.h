@@ -21,6 +21,8 @@ class AppController : public QObject {
     Q_OBJECT
 
     Q_PROPERTY(int activeTab READ activeTab WRITE setActiveTab NOTIFY uiStateChanged)
+    Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    Q_PROPERTY(QVariantMap tr READ tr NOTIFY languageChanged)
     Q_PROPERTY(int executionMode READ executionMode WRITE setExecutionMode NOTIFY uiStateChanged)
     Q_PROPERTY(QString saasEndpoint READ saasEndpoint WRITE setSaasEndpoint NOTIFY uiStateChanged)
     Q_PROPERTY(int viewMode READ viewMode WRITE setViewMode NOTIFY uiStateChanged)
@@ -75,6 +77,9 @@ public:
     // UI navigation & view settings
     int activeTab() const { return activeTab_; }
     void setActiveTab(int tab);
+    QString language() const { return language_; }
+    void setLanguage(const QString& lang);
+    QVariantMap tr() const;
     int executionMode() const { return executionMode_; }
     void setExecutionMode(int mode);
     QString saasEndpoint() const { return saasEndpoint_; }
@@ -136,7 +141,7 @@ public:
     double meanIndex() const { return currentOutput_.summary.meanIndex; }
     double stdDevIndex() const { return currentOutput_.summary.stdDevIndex; }
     double processingMs() const { return currentOutput_.summary.processingMs; }
-    QString statusNote() const { return QString::fromStdString(currentOutput_.summary.statusNote); }
+    QString statusNote() const;
     QString activeCaptureSummary() const;
     bool isLoading() const { return isLoading_; }
 
@@ -149,6 +154,7 @@ public:
 
 signals:
     void uiStateChanged();
+    void languageChanged();
     void dataChanged();
     void configChanged();
     void outputUpdated();
@@ -161,6 +167,7 @@ private:
     ViewportImageProvider* imageProvider_;
 
     int activeTab_{0};
+    QString language_{QStringLiteral("ja")};
     int executionMode_{0};
     QString saasEndpoint_{QStringLiteral("http://127.0.0.1:8000")};
     int viewMode_{0};
